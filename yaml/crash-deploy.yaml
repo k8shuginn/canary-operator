@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: crash
+  name: crash
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: crash
+  template:
+    metadata:
+      labels:
+        app: crash
+    spec:
+      containers:
+      - image: busybox:1.36
+        name: busybox
+        env:
+          - name: SLEEP_DURATION
+            value: "120" # 이 값을 원하는 시간(초)로 설정
+        command: [ "sh", "-c", "sleep $SLEEP_DURATION && exit 1" ]

@@ -1,0 +1,12 @@
+apiVersion: canary.k8shuginn.io/v1alpha1
+kind: Canary
+metadata:
+  name: canary-sample
+  namespace: default
+spec:
+  oldDeployment: old-deployment
+  newDeployment: crash
+  totalReplicas: 10
+  stepReplicas: 2
+  cronSchedule: "* * * * *"
+  enableRollback: true
