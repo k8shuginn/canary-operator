@@ -70,7 +70,8 @@ spec:
         - /manager
         args:
         - --leader-elect
-        image: controller:latest
+        image: canary-operator:latest
+        imagePullPolicy: IfNotPresent
         name: manager
         securityContext:
           allowPrivilegeEscalation: false

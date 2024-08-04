@@ -125,6 +125,7 @@ func main() {
 	if err = (&controller.CanaryReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Cr:     controller.NewCron(mgr.GetClient()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Canary")
 		os.Exit(1)
