@@ -9,16 +9,46 @@ import (
 	"time"
 )
 
-type cronInfo struct {
-	schedule string
+var (
+	k8sClient client.Client
+)
+
+type CronJob struct {
+	id        cronv3.EntryID
+	schedule  string
+	namespace string
+	name      string
+
 	old, new string
-	id       cronv3.EntryID
+}
+
+func (j *CronJob) Run() {
+	ctx := context.Background()
+	logger := log.FromContext(ctx)
+
+	canary := &v1alpha1.Canary{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: j.namespace, Name: j.name}, canary); err != nil {
+		logger.Error(err, "[Cron] Failed to get Canary")
+		return
+	}
+
+	if canary.Status.CurrentStep < canary.Spec.TotalReplicas/canary.Spec.StepReplicas {
+		canary.Status.CurrentStep++
+		_ = k8sClient.Status().Update(ctx, canary)
+
+		canary.Annotations[AnnotationLastUpdate] = time.Now().Format(time.RFC3339)
+		if err := k8sClient.Update(context.Background(), canary); err != nil {
+			logger.Error(err, "[Cron] Failed to update Canary")
+			return
+		}
+	}
+	logger.Info("[Cron] Updated Canary", "namespace", j.namespace, "name", j.name)
 }
 
 type Cron struct {
 	client.Client
 	cr    *cronv3.Cron
-	idMap map[string]cronInfo
+	idMap map[string]*CronJob
 }
 
 func NewCron(client client.Client) *Cron {
@@ -26,7 +56,7 @@ func NewCron(client client.Client) *Cron {
 	c := &Cron{
 		Client: client,
 		cr:     cr,
-		idMap:  make(map[string]cronInfo),
+		idMap:  make(map[string]*CronJob),
 	}
 	c.cr.Start()
 
@@ -46,38 +76,21 @@ func (c *Cron) Apply(
 		delete(c.idMap, idx)
 	}
 
-	id, err := c.cr.AddFunc(spec, func() {
-		ctx := context.Background()
-		logger := log.FromContext(ctx)
+	cj := &CronJob{
+		schedule:  spec,
+		namespace: namespace,
+		name:      name,
+		old:       old,
+		new:       new,
+	}
 
-		canary := &v1alpha1.Canary{}
-		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, canary); err != nil {
-			logger.Error(err, "[Cron] Failed to get Canary")
-			return
-		}
-
-		if canary.Status.CurrentStep < canary.Spec.TotalReplicas/canary.Spec.StepReplicas {
-			canary.Status.CurrentStep++
-			_ = c.Status().Update(ctx, canary)
-
-			canary.Annotations[AnnotationLastUpdate] = time.Now().Format(time.RFC3339)
-			if err := c.Update(context.Background(), canary); err != nil {
-				logger.Error(err, "[Cron] Failed to update Canary")
-				return
-			}
-		}
-		logger.Info("[Cron] Updated Canary", "namespace", namespace, "name", name)
-	})
+	id, err := c.cr.AddJob(spec, cj)
 	if err != nil {
 		return err
 	}
+	cj.id = id
+	c.idMap[idx] = cj
 
-	c.idMap[idx] = cronInfo{
-		schedule: spec,
-		id:       id,
-		old:      old,
-		new:      new,
-	}
 	return nil
 }
 
